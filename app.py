@@ -8,7 +8,7 @@ st.set_page_config(page_title="Jade AI", page_icon="🤖", layout="centered")
 if "memory" not in st.session_state:
     st.session_state.memory = []
 
-# Load API key safely from Streamlit secrets (do NOT hardcode keys)
+# Load API key safely from Streamlit secrets
 try:
     GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 except Exception:
@@ -28,6 +28,10 @@ def chat_with_groq(user_message):
     ]
     messages.extend(trimmed_memory)
 
+    # If API key is missing, return error message
+    if not GROQ_API_KEY:
+        return "Groq API key missing. Please add it in Streamlit Secrets."
+
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -39,8 +43,11 @@ def chat_with_groq(user_message):
         "messages": messages
     }
 
-    response = requests.post(url, headers=headers, data=json.dumps(data))
-    result = response.json()
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(data))
+        result = response.json()
+    except Exception as e:
+        return f"Error connecting to Groq API: {str(e)}"
 
     if "error" in result:
         return "Groq Error: " + result["error"].get("message", str(result["error"]))
@@ -55,11 +62,6 @@ def chat_with_groq(user_message):
 # ------------------- USER INTERFACE -------------------
 st.markdown("<h1 style='text-align:center;'>🤖 Jade — General AI Agent</h1>", unsafe_allow_html=True)
 st.write("")
-
-# Show message if API key missing
-if GROQ_API_KEY is None:
-    st.error("Groq API key not found. Add it in the app's Secrets on Streamlit Cloud under 'Settings → Secrets'.")
-    st.stop()
 
 # Chat container (render history)
 chat_box = st.container()
@@ -87,12 +89,20 @@ with chat_box:
                 unsafe_allow_html=True
             )
 
-# Input area
+# ------------------- INPUT AREA -------------------
 st.write("---")
 user_input = st.text_input("Type your message:", "")
 
-if st.button("Send"):
-    if user_input.strip() != "":
-        with st.spinner("Jade is thinking..."):
-            reply = chat_with_groq(user_input)
-        st.experimental_rerun()
+if st.button("Send") and user_input.strip() != "":
+    with st.spinner("Jade is thinking..."):
+        reply = chat_with_groq(user_input)
+    # Show the latest reply immediately without rerunning
+    st.markdown(
+        f"""
+        <div style='background:#E8E8E8;padding:10px;margin:6px;border-radius:8px;max-width:70%;float:left;'>
+            <b>Jade:</b> {reply}
+        </div>
+        <div style='clear:both;'></div>
+        """,
+        unsafe_allow_html=True
+    )
