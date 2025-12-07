@@ -1,70 +1,79 @@
 import streamlit as st
-import json
 from modules.groq_client import run_groq_chat
 from modules.memory import Memory
-from modules.tools import process_tool_request
+from modules.tools import send_email, send_sms
 
-# ---------------------------
-# PAGE CONFIG
-# ---------------------------
 st.set_page_config(
     page_title="Jade — General AI Agent",
-    page_icon="🧠",
+    page_icon="🤖",
     layout="wide"
 )
 
-# ---------------------------
-# INITIALIZE MEMORY
-# ---------------------------
-memory = Memory("data/memory.json")
+# Initialize memory
+memory = Memory()
 
-# ---------------------------
-# TITLE
-# ---------------------------
-st.markdown("""
-# 🧠 Jade — General AI Agent
-""")
+# Sidebar Navigation
+st.sidebar.title("📌 Navigation")
+page = st.sidebar.radio(
+    "Select a page:",
+    ["Home", "Chat", "Email", "SMS", "Admin Dashboard"]
+)
 
-# ---------------------------
-# CHAT UI
-# ---------------------------
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# ----------------- HOME PAGE -----------------
+if page == "Home":
+    st.title("🤖 Jade — General AI Agent")
+    st.write("Welcome! Use the menu on the left to explore features.")
 
-# Display saved messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
+# ----------------- CHAT PAGE -----------------
+elif page == "Chat":
+    st.title("💬 Chat with Jade")
 
-# Chat input
-user_input = st.chat_input("Type your message...")
+    user_input = st.text_input("Type your message:")
 
-if user_input:
-    # Show user bubble
-    with st.chat_message("user"):
-        st.write(user_input)
+    if st.button("Send"):
+        if user_input.strip():
+            memory.add("user", user_input)
 
-    st.session_state.messages.append({"role": "user", "content": user_input})
+            response = run_groq_chat(user_input, memory.get())
+            memory.add("assistant", response)
 
-    # Save to memory
-    memory.add("user", user_input)
+            st.success(f"**Jade:** {response}")
+        else:
+            st.warning("Please type something.")
 
-    # Agent Response
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            ai_reply = run_groq_chat(user_input)
+    st.subheader("Conversation Memory")
+    st.json(memory.get())
 
-            # Check for tool actions (email, sms, search, etc.)
-            tool_output = process_tool_request(ai_reply)
+# ----------------- EMAIL PAGE -----------------
+elif page == "Email":
+    st.title("📧 Send Email")
 
-            final_reply = ai_reply
-            if tool_output:
-                final_reply += f"\n\n🔧 **Tool Result:**\n{tool_output}"
+    to = st.text_input("Recipient email:")
+    subject = st.text_input("Subject:")
+    body = st.text_area("Message:")
 
-            st.write(final_reply)
+    if st.button("Send Email"):
+        send_email(to, subject, body)
+        st.success("Email sent!")
 
-            # Save reply to session + memory
-            st.session_state.messages.append(
-                {"role": "assistant", "content": final_reply}
-            )
-            memory.add("assistant", final_reply)
+# ----------------- SMS PAGE -----------------
+elif page == "SMS":
+    st.title("📱 Send SMS")
+
+    number = st.text_input("Phone Number:")
+    message = st.text_area("Message:")
+
+    if st.button("Send SMS"):
+        send_sms(number, message)
+        st.success("SMS sent!")
+
+# ----------------- ADMIN PAGE -----------------
+elif page == "Admin Dashboard":
+    st.title("🛠 Admin Dashboard")
+
+    if st.button("Clear Conversation Memory"):
+        memory.clear()
+        st.success("Memory cleared!")
+
+    st.subheader("Current Memory Data")
+    st.json(memory.get())
