@@ -1,108 +1,70 @@
 import streamlit as st
-import requests
 import json
+from modules.groq_client import run_groq_chat
+from modules.memory import Memory
+from modules.tools import process_tool_request
 
-st.set_page_config(page_title="Jade AI", page_icon="🤖", layout="centered")
+# ---------------------------
+# PAGE CONFIG
+# ---------------------------
+st.set_page_config(
+    page_title="Jade — General AI Agent",
+    page_icon="🧠",
+    layout="wide"
+)
 
-# ------------------- MEMORY -------------------
-if "memory" not in st.session_state:
-    st.session_state.memory = []
+# ---------------------------
+# INITIALIZE MEMORY
+# ---------------------------
+memory = Memory("data/memory.json")
 
-# Load API key safely from Streamlit secrets
-try:
-    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-except Exception:
-    GROQ_API_KEY = None
+# ---------------------------
+# TITLE
+# ---------------------------
+st.markdown("""
+# 🧠 Jade — General AI Agent
+""")
 
-# ------------------- JADE ENGINE -------------------
-def chat_with_groq(user_message):
-    # Add user message to memory
-    st.session_state.memory.append({"role": "user", "content": user_message})
+# ---------------------------
+# CHAT UI
+# ---------------------------
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-    # Keep last 5 messages
-    trimmed_memory = st.session_state.memory[-5:]
+# Display saved messages
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
 
-    messages = [
-        {"role": "system",
-         "content": "You are Jade — a friendly, polite, helpful general AI agent with memory."}
-    ]
-    messages.extend(trimmed_memory)
+# Chat input
+user_input = st.chat_input("Type your message...")
 
-    # If API key is missing, return error message
-    if not GROQ_API_KEY:
-        return "Groq API key missing. Please add it in Streamlit Secrets."
+if user_input:
+    # Show user bubble
+    with st.chat_message("user"):
+        st.write(user_input)
 
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    st.session_state.messages.append({"role": "user", "content": user_input})
 
-    data = {
-        "model": "llama-3.1-8b-instant",
-        "messages": messages
-    }
+    # Save to memory
+    memory.add("user", user_input)
 
-    try:
-        response = requests.post(url, headers=headers, data=json.dumps(data))
-        result = response.json()
-    except Exception as e:
-        return f"Error connecting to Groq API: {str(e)}"
+    # Agent Response
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            ai_reply = run_groq_chat(user_input)
 
-    if "error" in result:
-        return "Groq Error: " + result["error"].get("message", str(result["error"]))
+            # Check for tool actions (email, sms, search, etc.)
+            tool_output = process_tool_request(ai_reply)
 
-    reply = result["choices"][0]["message"]["content"]
+            final_reply = ai_reply
+            if tool_output:
+                final_reply += f"\n\n🔧 **Tool Result:**\n{tool_output}"
 
-    # Add Jade reply to memory
-    st.session_state.memory.append({"role": "assistant", "content": reply})
+            st.write(final_reply)
 
-    return reply
-
-# ------------------- USER INTERFACE -------------------
-st.markdown("<h1 style='text-align:center;'>🤖 Jade — General AI Agent</h1>", unsafe_allow_html=True)
-st.write("")
-
-# Chat container (render history)
-chat_box = st.container()
-
-with chat_box:
-    for msg in st.session_state.memory:
-        if msg["role"] == "user":
-            st.markdown(
-                f"""
-                <div style='background:#DCF8C6;padding:10px;margin:6px;border-radius:8px;max-width:70%;float:right;'>
-                    <b>You:</b> {msg['content']}
-                </div>
-                <div style='clear:both;'></div>
-                """,
-                unsafe_allow_html=True
+            # Save reply to session + memory
+            st.session_state.messages.append(
+                {"role": "assistant", "content": final_reply}
             )
-        else:
-            st.markdown(
-                f"""
-                <div style='background:#E8E8E8;padding:10px;margin:6px;border-radius:8px;max-width:70%;float:left;'>
-                    <b>Jade:</b> {msg['content']}
-                </div>
-                <div style='clear:both;'></div>
-                """,
-                unsafe_allow_html=True
-            )
-
-# ------------------- INPUT AREA -------------------
-st.write("---")
-user_input = st.text_input("Type your message:", "")
-
-if st.button("Send") and user_input.strip() != "":
-    with st.spinner("Jade is thinking..."):
-        reply = chat_with_groq(user_input)
-    # Show the latest reply immediately without rerunning
-    st.markdown(
-        f"""
-        <div style='background:#E8E8E8;padding:10px;margin:6px;border-radius:8px;max-width:70%;float:left;'>
-            <b>Jade:</b> {reply}
-        </div>
-        <div style='clear:both;'></div>
-        """,
-        unsafe_allow_html=True
-    )
+            memory.add("assistant", final_reply)
