@@ -4,31 +4,42 @@ import json
 
 st.set_page_config(page_title="Jade AI", page_icon="🤖", layout="centered")
 
-# ------------------- LOAD GROQ API KEY -------------------
+# ---------------- SECRET KEY ----------------
 try:
     GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 except:
     st.error("❌ Missing GROQ_API_KEY in Streamlit Secrets!")
     st.stop()
 
-
-# ------------------- MEMORY -------------------
+# ---------------- MEMORY ----------------
 if "memory" not in st.session_state:
     st.session_state.memory = []
 
-
-# ------------------- GROQ CHAT FUNCTION -------------------
+# ---------------- GROQ CHAT ----------------
 def run_groq_chat(prompt, memory_list):
     try:
-        messages = [{"role": "system", "content": "You are Jade AI Assistant."}]
+        # Build messages
+        messages = []
+        messages.append({"role": "system", "content": "You are Jade AI Assistant."})
 
-        # Add memory items
-        for item in memory_list:
-            messages.append({"role": "user", "content": item})
+        for m in memory_list:
+            messages.append({"role": "user", "content": m})
 
-        # Add new user message
         messages.append({"role": "user", "content": prompt})
 
-        url = "https://api.groq.com/openai/v1/chat/completions"
+        # Request headers
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        # Body
+        body = {
+            "model": "llama3-8b-8192",
+            "messages": messages,
+            "max_tokens": 200
+        }
+
+        # API Call
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        response
