@@ -1,54 +1,68 @@
 import streamlit as st
 import requests
+import json
 
-st.set_page_config(
-    page_title="Jade AI",
-    page_icon="🤖",
-    layout="centered"
-)
+st.set_page_config(page_title="Jade AI", page_icon="🤖", layout="centered")
 
-# LOAD SECRET
-if "GROQ_API_KEY" not in st.secrets:
-    st.error("Missing API key in Secrets.")
-    st.stop()
-
-GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-
-# MEMORY
+# ------------------- MEMORY -------------------
 if "memory" not in st.session_state:
     st.session_state.memory = []
 
-# CHAT FUNCTION
-def run_groq_chat(prompt, history):
-    messages = []
-    messages.append({"role": "system", "content": "You are Jade AI."})
+# Load API key safely from Streamlit secrets
+try:
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+except:
+    st.error("❌ Missing GROQ_API_KEY in Streamlit Secrets")
+    st.stop()
 
-    for h in history:
-        messages.append({"role": "user", "content": h})
+# Groq API endpoint
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-    messages.append({"role": "user", "content": prompt})
+# ------------------- UI -------------------
+
+st.title("🤖 Jade AI — Your AI Assistant")
+
+user_input = st.text_input("Ask Jade anything:")
+
+# Chat history UI
+for mem in st.session_state.memory:
+    st.chat_message(mem["role"]).markdown(mem["content"])
+
+# ------------------- SEND REQUEST -------------------
+if st.button("Send") and user_input.strip() != "":
+    st.session_state.memory.append({"role": "user", "content": user_input})
+
+    payload = {
+        "model": "llama-3.1-70b-versatile",
+        "messages": st.session_state.memory
+    }
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    body = {
-        "model": "llama3-8b-8192",
-        "messages": messages,
-        "max_tokens": 200
-    }
-
-    url = "https://api.groq.com/openai/v1/chat/completions"
-
     try:
-        response = requests.post(url, headers=headers, json=body)
-        data = response.json()
-    except:
-        return "Error: Groq request failed."
+        response = requests.post(GROQ_URL, headers=headers, data=json.dumps(payload))
 
-    if "error" in data:
-        return "API Error: " + data["error"]["message"]
+        if response.status_code != 200:
+            st.error("❌ API Error: " + response.text)
+        else:
+            data = response.json()
+            msg = data["choices"][0]["message"]["content"]
 
-    try:
-        msg = data["choi]()
+            st.session_state.memory.append({"role": "assistant", "content": msg})
+            st.chat_message("assistant").markdown(msg)
+
+    except Exception as e:
+        st.error(f"Unexpected Error: {e}")
+
+# ------------------- SIDEBAR -------------------
+
+st.sidebar.title("⚙️ System Settings")
+
+st.sidebar.info("Email system not connected yet. More features coming soon!")
+
+if st.sidebar.button("Clear Chat"):
+    st.session_state.memory = []
+    st.rerun()
